@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width">
+  <title>Password Hashing Demo</title>
+  <script src="//bitwiseshiftleft.github.io/sjcl/sjcl.js"></script>
+  <script src="//tests-always-included.github.io/password-strength/javascripts/password-strength.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', e => {
+      let passwordStrength = new PasswordStrength();
+
+      let buttons = document.querySelectorAll('button');
+      let passwordInput = document.querySelector('#password-input');
+      let saltInput = document.querySelector('#salt-input');
+      let generatedHash = document.querySelector('#generated-hash');
+      let hashList = document.querySelector('#hash-list');
+      let hashTable = document.querySelector('#hash-table tbody');
+      let badPasswordList = document.querySelector('#password-suggestions');
+      
+      let passwordDB = [];
+      let hashDB = [];
+      
+      let lastHexHash;
+
+      let hashManager = {
+        generateHash: () => {
+          let salt = sjcl.codec.utf8String.toBits(saltInput.value);
+          let password = passwordInput.value;
+          let hash = sjcl.misc.cachedPbkdf2(password, {
+            iter: 1000,
+            salt: salt
+          });
+
+          lastHexHash = sjcl.codec.hex.fromBits(hash.key);
+
+          let truncatedPassword = password;
+          let truncatedLastHexHash = lastHexHash.substr(0,10);
+
+          if (truncatedPassword.length > 15) {
+            truncatedPassword = password.substr(0, 15);
+          }    
+
+          document.querySelector('#hash-example-password').textContent = truncatedPassword;
+          document.querySelector('#hash-example-hash').textContent = truncatedLastHexHash;
+        },
+        saveHash: () => {
+          let password = passwordInput.value;
+
+          if (hashDB.indexOf(lastHexHash) === -1) {
+            hashDB.push(lastHexHash);
+            passwordDB.push(password);
+          }
+
+          hashList.innerHTML = '';
+
+          Array.prototype.forEach.call(hashTable.querySelectorAll('tr'), (tr, i) => {
+            hashTable.removeChild(tr);
+          });
+
+          hashDB.forEach((h, index) => {
+            let option = document.createElement('option');
+            option.value = h;
+            option.textContent = h;
+            hashList.appendChild(option);
+
+            let tr = document.createElement('tr');
+            let passwordTd = document.createElement('td');
+            let hashTd = document.createElement('td');
+
+            passwordTd.textContent = passwordDB[index];
+            hashTd.textContent = h.substr(0, 10);
+
+            tr.appendChild(passwordTd);
+            tr.appendChild(hashTd);
+            hashTable.appendChild(tr);
+          });
+        }
+      };
+      
+      Array.prototype.forEach.call(buttons, b => {
+        b.onclick = e => {
+          let fn = b.getAttribute('data-fn');
+          hashManager[fn]();
+        };
+      });
+      
+      function calculateEntropy () {
+        let password = passwordInput.value;
+        let passwordStats = passwordStrength.check(password);
+        document.querySelector('#entropy-output').textContent = '~' + Math.round(passwordStats.shannonEntropyBits);
+      }
+      
+      passwordInput.oninput = e => {
+        badPasswordList.value = '';
+        calculateEntropy();
+        hashManager.generateHash();
+      };
+      
+      badPasswordList.onchange = e => {
+        passwordInput.value = badPasswordList.value;
+        calculateEntropy();
+        hashManager.generateHash();
+      };
+      
+      calculateEntropy();
+      hashManager.generateHash();
+      hashManager.saveHash();
+    });
+  </script>
+  <style>
+    body {
+      background: white;
+      font-family: sans-serif;
+    }
+    
+    table {
+      border: 1px solid black;
+      border-collapse: separate;
+      border-spacing: 5px;
+      text-align: left;
+    }
+    
+    tr:nth-child(even) {
+      background: #ddd;
+    }
+    
+    td, th {
+      padding: .25em .5em;
+    }
+  </style>
+</head>
+<body>
+  <h1>Password Hacking Demo</h1>
+  <div>
+    <h3>1. Choose a Password</h3>
+    <p>Type a password that a person would choose if they weren't terribly security-conscious, or choose one from <a href="https://www.teamsid.com/worst-passwords-2017-full-list/">SplashData's Top 100 Worst Passwords.</a></p>
+    <input id="password-input" type="text" value="donthackme">
+    <select id="password-suggestions">
+      <option disabled selected value></option>
+      <option>123456</option>
+      <option>password</option>
+      <option>12345678</option>
+      <option>qwerty</option>
+      <option>12345</option>
+      <option>123456789</option>
+      <option>letmein</option>
+      <option>1234567</option>
+      <option>football</option>
+      <option>iloveyou</option>
+      <option>admin</option>
+      <option>welcome</option>
+      <option>monkey</option>
+      <option>login</option>
+      <option>abc123</option>
+      <option>starwars</option>
+      <option>123123</option>
+      <option>dragon</option>
+      <option>passw0rd</option>
+      <option>master</option>
+      <option>hello</option>
+      <option>freedom</option>
+      <option>whatever</option>
+      <option>qazwsx</option>
+      <option>trustno1</option>
+    </select>
+    
+    <em><sup>(Entropy: <span id="entropy-output"></span>)</sup></em>
+  </div>
+
+  <div>
+    <h3>2. Generate a Hash</h3>
+    <p>Normally, as a security measure, companies don't store the actual password you gave them, but they store a <em>hash</em> of the password instead. A <em>hash</em> is the result of processing a password using a method which ensures that each unique password is transformed into a unique randomized string. In the following example, the generated hashes are cut off after 10 digits, because otherwise, they are quite long:</p>
+    <pre>"goodpassword1" &rarr; Hash("goodpassword1") &rarr; a9b736a4d1</pre>
+    <pre>"omnipotence" &rarr; Hash("omnipotence") &rarr; 8c30de0c13</pre>
+    <p>The most important part of a hash function is that it <b>only works in one direction</b>. So, in principle, even if hashes are compromised, deriving the original password from it is not simple.</p>
+    <p><b>Hash("<span id="hash-example-password"></span>")</b> &rarr; <b><span id="hash-example-hash"></span></b></p>
+    <button data-fn="saveHash">Save Hash</button>
+  </div>
+  
+  <div>
+    <h3>2.5 Bonus: Choose a Salt</h3>
+    <p>Companies often (read: should) add "salt" to their hashes in order to make them even harder to reverse engineer. Most hashing methods use a salt to set up the randomization process that is used to generate the hash. In practice, a good salt will make deriving passwords from their hash prohibitively difficult, even if they are stolen by an attacker. However, an easily-guessable salt will only delay an attacker for a short while.</p>
+    <input id="salt-input" type="text" value="really tasty salt">
+  </div>
+  
+  <div>
+    <h2>The Company</h2>
+    Hash List
+    <select id="hash-list"></select>
+    <table id="hash-table">
+      <thead>
+        <tr><th>Password</th><th>Hash (First 10 digits)</th></tr>
+      </thead>
+      <tbody>
+      </tbody>
+    </table>
+  </div>
+  
+</body>
+</html>
